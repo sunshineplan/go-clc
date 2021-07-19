@@ -7,12 +7,16 @@ import (
 	"github.com/sunshineplan/go-clc/class"
 )
 
+// CLC represents Chinese Library Classification structure.
 type CLC struct {
-	code string
-	name string
+	// A notation is a code commonly used in classification schemes to represent a class.
+	notation string
+	// class description.
+	caption string
 }
 
-var TopCategory = []CLC{
+// TopClass is a list of top-level class defined in Chinese Library Classification.
+var TopClass = []CLC{
 	{"A", "马克思列宁主义、毛泽东思想、邓小平理论"},
 	{"B", "哲学、宗教"},
 	{"C", "社会科学总论"},
@@ -37,9 +41,9 @@ var TopCategory = []CLC{
 	{"Z", "综合性图书"},
 }
 
-func topCategory(code string) CLC {
-	for _, i := range TopCategory {
-		if i.code == code[:1] {
+func topClass(notation string) CLC {
+	for _, i := range TopClass {
+		if i.notation == notation[:1] {
 			return i
 		}
 	}
@@ -53,65 +57,79 @@ func str2clc(str string) CLC {
 		panic(fmt.Sprintln("failed to convert string to clc:", str))
 	}
 
-	code, ok := class.Verify(s[0])
+	notation, ok := class.Verify(s[0])
 	if !ok {
-		panic(fmt.Sprintln("bad clc:", code))
+		panic(fmt.Sprintln("bad CLC notation:", notation))
 	}
 
-	return CLC{code, s[1]}
+	return CLC{notation, s[1]}
 }
 
-func (clc *CLC) Code() string {
-	return clc.code
+// Notation returns CLC's notation.
+func (clc *CLC) Notation() string {
+	return clc.notation
 }
 
-func (clc *CLC) Name() string {
-	return clc.name
+// Caption returns CLC's caption.
+func (clc *CLC) Caption() string {
+	return clc.caption
 }
 
+// String returns CLC's notation and caption in string format.
 func (clc *CLC) String() string {
-	return fmt.Sprintf("%s %s", clc.code, clc.name)
+	return fmt.Sprintf("%s %s", clc.notation, clc.caption)
 }
 
-func (clc *CLC) TopCategory() CLC {
-	return topCategory(clc.code)
+// TopClass returns CLC's top-level class.
+func (clc *CLC) TopClass() CLC {
+	return topClass(clc.notation)
 }
 
-func (clc *CLC) Categories() []CLC {
-	categories := searchName(clc.code, class.LoadClass(clc.code))
-	return append([]CLC{clc.TopCategory()}, categories...)
+// Classes returns CLC's all related classes.
+func (clc *CLC) Classes() []CLC {
+	classes := searchCaption(clc.notation, class.LoadClass(clc.notation))
+	return append([]CLC{clc.TopClass()}, classes...)
 }
 
-func searchName(code string, dict *[]class.Class) (results []CLC) {
+func searchCaption(notation string, dict *[]class.Class) (results []CLC) {
 	for _, i := range *dict {
-		if strings.Contains(code, i.Code) {
-			results = append(results, CLC{i.Code, i.Name})
-			results = append(results, searchName(code, &i.SubClass)...)
+		if strings.Contains(notation, i.Notation) {
+			results = append(results, CLC{i.Notation, i.Caption})
+			results = append(results, searchCaption(notation, &i.SubClass)...)
 		}
 	}
 
 	return
 }
 
-func SearchByCode(code string) (CLC, error) {
+// SearchByNotation searchs CLC by notation and returns most likely result.
+// The only possible returned error when notation is illegal.
+func SearchByNotation(notation string) (CLC, error) {
 	var ok bool
-	if code, ok = class.Verify(code); !ok {
-		return CLC{}, fmt.Errorf("bad clc: %s", code)
+	if notation, ok = class.Verify(notation); !ok {
+		return CLC{}, fmt.Errorf("bad CLC notation: %s", notation)
 	}
 
-	results := searchName(code, class.LoadClass(code))
+	results := searchCaption(notation, class.LoadClass(notation))
 
 	if len(results) == 0 {
-		return topCategory(code), nil
+		return topClass(notation), nil
 	}
 
 	return results[len(results)-1], nil
 }
 
-func SearchByName(name string) (result []CLC) {
-	for _, i := range class.MatchAll(name) {
-		if clc := str2clc(i); strings.Contains(clc.name, name) {
-			result = append(result, clc)
+// SearchByCaption searchs CLC by caption and returns a slice of all
+// successive matches. A return value of nil indicates no match or caption
+// is empty string.
+func SearchByCaption(caption string) (results []CLC) {
+	if len(caption) == 0 {
+		return
+	}
+
+	for _, i := range class.FindAll(caption) {
+		if clc := str2clc(i); strings.Contains(clc.caption, caption) {
+			results = append(results, clc)
 		}
 	}
 

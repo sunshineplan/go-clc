@@ -16,12 +16,13 @@ const (
 	suffix = `(\d{0,3}(\.\d)?-)?\d{0,3}(\+\d{0,1})?(\.\d{1,3}(\+\d{0,2})?)?(\.\d{1,2})?(/-?\d{0,3}\.?\d{1,3})?`
 )
 
-var reCLC = regexp.MustCompile(fmt.Sprintf(`^%s%s$`, prefix, suffix))
+var re = regexp.MustCompile(fmt.Sprintf(`^%s%s$`, prefix, suffix))
 
-func Verify(code string) (string, bool) {
-	code = strings.ToUpper(code)
+// Verify verifies notation is legal or not.
+func Verify(notation string) (string, bool) {
+	notation = strings.ToUpper(notation)
 
-	return code, reCLC.MatchString(code)
+	return notation, re.MatchString(notation)
 }
 
 var index = map[string]class{
@@ -49,11 +50,21 @@ var index = map[string]class{
 	"Z": z,
 }
 
+func keys() (keys []string) {
+	for k := range index {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	return
+}
+
 type class string
 
+// Class represents Chinese Library Classification structure with subclass.
 type Class struct {
-	Code     string
-	Name     string
+	Notation string
+	Caption  string
 	SubClass []Class `json:",omitempty"`
 }
 
@@ -68,26 +79,26 @@ func (c class) load(debug bool) []Class {
 			panic(fmt.Sprintln("failed to convert string:", line))
 		}
 
-		code, ok := Verify(s[0])
+		notation, ok := Verify(s[0])
 		if !ok {
-			panic(fmt.Sprintln("bad clc:", code))
+			panic(fmt.Sprintln("bad CLC notation:", notation))
 		}
 
-		if dst := findIndex(&class, code); dst != nil {
+		if dst := findClass(&class, notation); dst != nil {
 			if debug {
-				log.Println("found:", line, dst.Code)
+				log.Println("found:", line, dst.Notation)
 			}
 			(*dst).SubClass = append((*dst).SubClass, Class{
-				Code: code,
-				Name: s[1],
+				Notation: notation,
+				Caption:  s[1],
 			})
 		} else {
 			if debug {
 				log.Println("not found:", line)
 			}
 			class = append(class, Class{
-				Code: code,
-				Name: s[1],
+				Notation: notation,
+				Caption:  s[1],
 			})
 		}
 	}
@@ -95,16 +106,28 @@ func (c class) load(debug bool) []Class {
 	return class
 }
 
+// Used to store loaded class data.
 var cache sync.Map
 
-func LoadClass(s string) *[]Class {
-	key := s[:1]
-	value, ok := cache.Load(key)
+// LoadClass loads class data according str's first letter.
+// The loaded data will be stored in cache, so the same class
+// data can be loaded faster next time.
+func LoadClass(str string) *[]Class {
+	if len(s) == 0 {
+		panic("argument must not be empty string")
+	}
+
+	notation, ok := Verify(str[:1])
 	if !ok {
-		class := index[key]
+		panic(fmt.Sprintln("bad CLC notation:", notation))
+	}
+
+	value, ok := cache.Load(notation)
+	if !ok {
+		class := index[notation]
 		data := class.load(false)
 
-		cache.Store(key, &data)
+		cache.Store(notation, &data)
 
 		return &data
 	}
@@ -112,18 +135,18 @@ func LoadClass(s string) *[]Class {
 	return value.(*[]Class)
 }
 
-func findIndex(src *[]Class, code string) *Class {
-	if len(code) == 0 {
+func findClass(src *[]Class, notation string) *Class {
+	if len(notation) == 0 {
 		return nil
 	}
 
 	var found *Class
 	for i := range *src {
-		if reduceOne(code) == (*src)[i].Code {
+		if reduceOne(notation) == (*src)[i].Notation {
 			return &(*src)[i]
-		} else if strings.Contains(reduceOne(code), (*src)[i].Code) {
+		} else if strings.Contains(reduceOne(notation), (*src)[i].Notation) {
 			found = &(*src)[i]
-			if dst := findIndex(&(*src)[i].SubClass, code); dst != nil {
+			if dst := findClass(&(*src)[i].SubClass, notation); dst != nil {
 				return dst
 			}
 		}
@@ -140,9 +163,11 @@ func reduceOne(s string) string {
 	return regexp.MustCompile(`(\.|-|\+)+$`).ReplaceAllString(s[:len(s)-1], "")
 }
 
-func MatchAll(str string) (results []string) {
-	for _, i := range index {
-		for _, line := range strings.Split(string(i), "\n") {
+// FindAll walks all classes raw data and returns a slice of all
+// successive matches of str. A return value of nil indicates no match.
+func FindAll(str string) (results []string) {
+	for _, i := range keys() {
+		for _, line := range strings.Split(string(index[i]), "\n") {
 			if strings.Contains(line, str) {
 				results = append(results, line)
 			}
@@ -152,12 +177,11 @@ func MatchAll(str string) (results []string) {
 	return
 }
 
-func exportJSON(dir, category string, debug bool) {
-	path := fmt.Sprintf("%s/%s.json", dir, category)
+func exportJSON(dir, class string, debug bool) {
+	path := fmt.Sprintf("%s/%s.json", dir, class)
 	log.Println("Exporting", path)
 
-	class := index[category]
-	data := class.load(debug)
+	data := index[class].load(debug)
 
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
@@ -178,21 +202,9 @@ func exportJSON(dir, category string, debug bool) {
 	}
 }
 
-func ExportJSON(dir string, force, debug bool) {
-	var keys []string
-	for k := range index {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, category := range keys {
-		if !force {
-			path := fmt.Sprintf("%s/%s.json", dir, category)
-			if _, err := os.Stat(path); err == nil {
-				log.Println("Skip export", path)
-				continue
-			}
-		}
-		exportJSON(dir, category, debug)
+// ExportJSON exports all classes data to separate files in json format.
+func ExportJSON(dir string, debug bool) {
+	for _, class := range keys() {
+		exportJSON(dir, class, debug)
 	}
 }
