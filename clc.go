@@ -93,7 +93,7 @@ func searchName(code string, dict *[]class.Class) (results []CLC) {
 	return
 }
 
-func SearchName(code string) (CLC, error) {
+func SearchByCode(code string) (CLC, error) {
 	var ok bool
 	if code, ok = class.Verify(code); !ok {
 		return CLC{}, fmt.Errorf("bad clc: %s", code)
@@ -108,7 +108,7 @@ func SearchName(code string) (CLC, error) {
 	return results[len(results)-1], nil
 }
 
-func SearchCode(name string) (result []CLC) {
+func SearchByName(name string) (result []CLC) {
 	for _, i := range class.MatchAll(name) {
 		if clc := str2clc(i); strings.Contains(clc.name, name) {
 			result = append(result, clc)

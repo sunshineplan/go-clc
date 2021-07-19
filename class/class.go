@@ -179,7 +179,13 @@ func exportJSON(dir, category string, debug bool) {
 }
 
 func ExportJSON(dir string, force, debug bool) {
-	for category := range index {
+	var keys []string
+	for k := range index {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, category := range keys {
 		if !force {
 			path := fmt.Sprintf("%s/%s.json", dir, category)
 			if _, err := os.Stat(path); err == nil {
