@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"sort"
@@ -68,7 +69,7 @@ type Class struct {
 	SubClass []Class `json:",omitempty"`
 }
 
-func (c class) load(debug bool) []Class {
+func (c class) load() []Class {
 	src := strings.Split(strings.TrimSpace(string(c)), "\n")
 	sort.Strings(src)
 
@@ -85,17 +86,13 @@ func (c class) load(debug bool) []Class {
 		}
 
 		if dst := findClass(&class, notation); dst != nil {
-			if debug {
-				log.Println("found:", line, dst.Notation)
-			}
+			slog.Debug("found", "line", line, "notation", dst.Notation)
 			(*dst).SubClass = append((*dst).SubClass, Class{
 				Notation: notation,
 				Caption:  s[1],
 			})
 		} else {
-			if debug {
-				log.Println("not found:", line)
-			}
+			slog.Debug("not found", "line", line)
 			class = append(class, Class{
 				Notation: notation,
 				Caption:  s[1],
@@ -125,7 +122,7 @@ func LoadClass(str string) *[]Class {
 	value, ok := cache.Load(notation)
 	if !ok {
 		class := index[notation]
-		data := class.load(false)
+		data := class.load()
 
 		cache.Store(notation, &data)
 
@@ -177,11 +174,11 @@ func FindAll(str string) (results []string) {
 	return
 }
 
-func exportJSON(dir, class string, debug bool) {
+func exportJSON(dir, class string) {
 	path := fmt.Sprintf("%s/%s.json", dir, class)
 	log.Println("Exporting", path)
 
-	data := index[class].load(debug)
+	data := index[class].load()
 
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
@@ -203,8 +200,8 @@ func exportJSON(dir, class string, debug bool) {
 }
 
 // ExportJSON exports all classes data to separate files in json format.
-func ExportJSON(dir string, debug bool) {
+func ExportJSON(dir string) {
 	for _, class := range keys() {
-		exportJSON(dir, class, debug)
+		exportJSON(dir, class)
 	}
 }
